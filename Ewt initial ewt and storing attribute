@@ -1,0 +1,166 @@
+import boto3
+import json
+from datetime import datetime, timedelta
+
+def round_time(dt=None, round_to=300):
+    if dt is None:
+        dt = datetime.utcnow()
+    seconds = (dt - dt.min).seconds
+    rounding = (seconds + round_to / 2) // round_to * round_to
+    return dt + timedelta(0, rounding - seconds, -dt.microsecond)
+
+def lambda_handler(event, context):
+    connect = boto3.client('connect')
+    print("Received event: " + json.dumps(event))
+    
+    try:
+        contact_id = event['Details']['ContactData']['ContactId']
+    except KeyError:
+        return {
+            'statusCode': 400,
+            'body': 'ContactId not found in event'
+        }
+
+    instance_id = 'your_instance_id'  # Replace with your Amazon Connect instance ID
+    queue_id = event['Details']['ContactData']['Attributes'].get('queue_id')
+
+    if not queue_id:
+        return {
+            'statusCode': 400,
+            'body': 'queue_id parameter not found'
+        }
+
+    print(f"Using instance ID: {instance_id}")
+    print(f"Using queue ID: {queue_id}")
+    
+    end_time = round_time(datetime.utcnow())
+    start_time = end_time - timedelta(minutes=30)
+    print(f"Start time: {start_time.isoformat()}")
+    print(f"End time: {end_time.isoformat()}")
+
+    try:
+        historical_response = connect.get_metric_data(
+            InstanceId=instance_id,
+            StartTime=start_time,
+            EndTime=end_time,
+            Filters={
+                'Queues': [queue_id],
+                'Channels': ['VOICE']
+            },
+            HistoricalMetrics=[
+                {
+                    'Name': 'HANDLE_TIME',
+                    'Statistic': 'AVG',
+                    'Unit': 'SECONDS'
+                },
+            ],
+        )
+        print("Historical Metrics Response: " + json.dumps(historical_response, indent=2, default=str))
+    except connect.exceptions.ResourceNotFoundException as e:
+        return {
+            'statusCode': 404,
+            'body': f'Resource not found: {str(e)}'
+        }
+    except Exception as e:
+        print(f"Error retrieving historical data: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': f'Error retrieving historical data: {str(e)}'
+        }
+
+    try:
+        average_handle_time = None
+        if 'MetricResults' in historical_response and historical_response['MetricResults']:
+            for metric_result in historical_response['MetricResults']:
+                for collection in metric_result['Collections']:
+                    if collection['Metric']['Name'] == 'HANDLE_TIME':
+                        average_handle_time = collection['Value']
+                        break
+
+        print(f"Average Handle Time: {average_handle_time}")
+    except KeyError as e:
+        print(f"Key error while extracting handle time: {str(e)}")
+
+    try:
+        current_response = connect.get_current_metric_data(
+            InstanceId=instance_id,
+            Filters={
+                'Queues': [queue_id]
+            },
+            CurrentMetrics=[
+                {
+                    'Name': 'AGENTS_AVAILABLE',
+                    'Unit': 'COUNT'
+                },
+                {
+                    'Name': 'CONTACTS_IN_QUEUE',
+                    'Unit': 'COUNT'
+                }
+            ]
+        )
+        print("Current Metrics Response: " + json.dumps(current_response, indent=2, default=str))
+    except Exception as e:
+        print(f"Error retrieving current metric data: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': f'Error retrieving current metric data: {str(e)}'
+        }
+
+    try:
+        if 'MetricResults' in current_response and current_response['MetricResults']:
+            metrics = current_response['MetricResults']
+            print("Metrics Results: " + json.dumps(metrics, indent=2, default=str))
+            agents_available = 0
+            contacts_in_queue = 0
+            
+            for metric in metrics:
+                for collection in metric['Collections']:
+                    metric_name = collection['Metric']['Name']
+                    metric_value = collection['Value']
+                    print(f"Metric Name: {metric_name}, Metric Value: {metric_value}")
+                    if metric_name == 'AGENTS_AVAILABLE':
+                        agents_available = metric_value
+                    elif metric_name == 'CONTACTS_IN_QUEUE':
+                        contacts_in_queue = metric_value
+
+            if agents_available > 0 and average_handle_time is not None:
+                initial_ewt = (contacts_in_queue * average_handle_time) / agents_available
+                queue_timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+                # Store initial EWT and queue timestamp as attributes
+                response = connect.update_contact_attributes(
+                    InstanceId=instance_id,
+                    InitialContactId=contact_id,
+                    Attributes={
+                        'initial_ewt': str(initial_ewt),
+                        'queue_timestamp': queue_timestamp
+                    }
+                )
+
+                return {
+                    'statusCode': 200,
+                    'body': {
+                        'initial_ewt': initial_ewt,
+                        'queue_timestamp': queue_timestamp
+                    }
+                }
+            else:
+                return {
+                    'statusCode': 500,
+                    'body': 'No available agents or handle time to calculate wait time'
+                }
+        else:
+            return {
+                'statusCode': 500,
+                'body': 'No metrics found in response'
+            }
+    except KeyError as e:
+        return {
+            'statusCode': 500,
+            'body': f'Missing key in metric data: {str(e)}'
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f'Error processing metric data: {str(e)}'
+        }
