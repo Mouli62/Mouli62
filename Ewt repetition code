@@ -1,0 +1,35 @@
+import boto3
+import json
+from datetime import datetime, timedelta
+
+def convert_seconds_to_minutes(seconds):
+    if seconds is not None:
+        return seconds / 60
+    return None
+
+def lambda_handler(event, context):
+    connect = boto3.client('connect')
+    print("Received event: " + json.dumps(event))
+    
+    try:
+        contact_id = event['Details']['ContactData']['ContactId']
+        initial_ewt = float(event['Details']['ContactData']['Attributes'].get('initial_ewt'))
+        queue_timestamp_str = event['Details']['ContactData']['Attributes'].get('queue_timestamp')
+        queue_timestamp = datetime.strptime(queue_timestamp_str, '%Y-%m-%dT%H:%M:%SZ')
+    except KeyError:
+        return {
+            'statusCode': 400,
+            'body': 'Required attributes not found in event'
+        }
+
+    current_timestamp = datetime.utcnow()
+    elapsed_time = (current_timestamp - queue_timestamp).total_seconds()
+    current_ewt_seconds = initial_ewt - elapsed_time
+    current_ewt_minutes = convert_seconds_to_minutes(current_ewt_seconds)
+
+    return {
+        'statusCode': 200,
+        'body': {
+            'current_ewt_minutes': current_ewt_minutes
+        }
+    }
