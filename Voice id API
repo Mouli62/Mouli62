@@ -1,0 +1,59 @@
+import boto3
+import json
+
+def lambda_handler(event, context):
+    # Create a Voice ID client
+    client = boto3.client('voice-id')
+    
+    # Retrieve the speaker ID and domain ID from the input event
+    speaker_id = event.get('speaker_id')
+    domain_id = event.get('domain_id')
+    
+    if not speaker_id or not domain_id:
+        return {
+            'statusCode': 400,
+            'body': json.dumps({
+                'message': 'Both speaker_id and domain_id are required.'
+            })
+        }
+
+    try:
+        # Describe the speaker to check if they are enrolled
+        response = client.describe_speaker(
+            DomainId=domain_id,
+            SpeakerId=speaker_id
+        )
+        
+        # Check the speaker's status
+        speaker_status = response['Speaker']['Status']
+        
+        if speaker_status == 'ENROLLED':
+            enrollment_status = 'ENROLLED'
+        else:
+            enrollment_status = 'NOT_ENROLLED'
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'speaker_id': speaker_id,
+                'domain_id': domain_id,
+                'enrollment_status': enrollment_status
+            })
+        }
+    
+    except client.exceptions.ResourceNotFoundException:
+        return {
+            'statusCode': 404,
+            'body': json.dumps({
+                'message': f'Speaker {speaker_id} not found in domain {domain_id}.',
+                'enrollment_status': 'NOT_ENROLLED'
+            })
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'message': f'Error: {str(e)}',
+                'enrollment_status': 'ERROR'
+            })
+        }
