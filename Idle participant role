@@ -1,0 +1,63 @@
+import boto3
+import datetime
+
+# Initialize AWS client for Connect and Messaging
+client = boto3.client('connect')
+# Assume there's another client or API call for sending messages
+
+def send_message(participant_id, message):
+    # Placeholder for your message sending logic
+    # Use the appropriate API to send a message to the customer
+    print(f"Message sent to participant {participant_id}: {message}")
+
+def update_participant_role_config(instance_id, contact_id, role, timer_type, duration_minutes):
+    try:
+        response = client.update_participant_role_config(
+            InstanceId=instance_id,
+            ContactId=contact_id,
+            ChannelConfiguration={
+                'Chat': {
+                    'ParticipantTimerConfigList': [
+                        {
+                            'ParticipantRole': role,
+                            'TimerType': timer_type,
+                            'TimerValue': {
+                                'ParticipantTimerAction': 'Unset',  # Default action
+                                'ParticipantTimerDurationInMinutes': duration_minutes
+                            }
+                        }
+                    ]
+                }
+            }
+        )
+        print(f"Successfully updated timer config for {role}: {response}")
+    except Exception as e:
+        print(f"Error updating timer config for {role}: {e}")
+
+def lambda_handler(event, context):
+    instance_id = event['instance_id']
+    contact_id = event['contact_id']
+    customer_id = event['customer_id']
+    last_customer_activity = event['last_customer_activity']
+
+    # Calculate idle time
+    current_time = datetime.datetime.now()
+    idle_duration = (current_time - last_customer_activity).total_seconds() / 60
+
+    # Check if the customer has been idle for 3 minutes and send a warning message
+    if idle_duration >= 3:
+        send_message(customer_id, "You've been idle for 3 minutes. Please respond to avoid disconnection.")
+    
+    # Update idle timer for customer
+    update_participant_role_config(instance_id, contact_id, 'CUSTOMER', 'IDLE', 3)
+    
+    # Update idle timer for agent
+    update_participant_role_config(instance_id, contact_id, 'AGENT', 'IDLE', 3)
+
+    # Set disconnect timer for customer after 9 minutes
+    update_participant_role_config(instance_id, contact_id, 'CUSTOMER', 'DISCONNECT_NONCUSTOMER', 9)
+
+    return {
+        'statusCode': 200,
+        'body': 'Timers updated and message sent if needed.'
+    }
