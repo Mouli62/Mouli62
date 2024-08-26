@@ -1,0 +1,57 @@
+import json
+import boto3
+import os
+
+# Fetching environment variables
+connect_instance_id = os.environ["InstanceId"]
+contact_flow_id = os.environ["ContactFlowId"]
+instance_url = os.environ["instanceUrl"]
+
+# Initialize the client
+client = boto3.client('connect')
+
+def lambda_handler(event, context):
+    # Assuming event contains details required for the task
+    contact_id = event['Details']['ContactData']['ContactId']
+    
+    # Construct the URL for task references
+    url = f"{instance_url}/contact-trace-records/details/{contact_id}"
+
+    try:
+        # Create a task using start_task_contact
+        response = client.start_task_contact(
+            InstanceId=connect_instance_id,
+            ContactFlowId=contact_flow_id,
+            Attributes={
+                'AttributeKey': 'AttributeValue'  # Customize task attributes
+            },
+            Name="Customer Support Task",  # Customize task name
+            References={
+                'LinkReference': {
+                    'Value': url,
+                    'Type': 'URL'
+                }
+            },
+            Description='Follow up with customer'
+        )
+
+        # Logging the response
+        print("Task created successfully:", response)
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Task created successfully')
+        }
+    
+    except client.exceptions.InvalidRequestException as e:
+        print("Error creating task:", str(e))
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f"Failed to create task: {str(e)}")
+        }
+    except Exception as e:
+        print("Unexpected error:", str(e))
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f"Internal Server Error: {str(e)}")
+        }
