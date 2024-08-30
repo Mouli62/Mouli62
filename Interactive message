@@ -1,0 +1,47 @@
+import json
+import boto3
+
+def lambda_handler(event, context):
+    # Extract necessary information from the incoming event
+    contact_id = event['ContactId']
+    instance_id = 'your_instance_id'
+    participant_id = event['ParticipantId']
+    message = "How can I assist you today? Please choose an option:"
+    
+    # Initialize the ConnectParticipant client
+    connect_client = boto3.client('connectparticipant')
+    
+    # Define the interactive message
+    interactive_message = {
+        "ContentType": "application/vnd.amazonaws.connect.message.interactive",
+        "Content": {
+            "Title": "Customer Service Options",
+            "Subtitle": "Please select an option below:",
+            "Buttons": [
+                {"Text": "Billing", "Value": "billing"},
+                {"Text": "Technical Support", "Value": "technical_support"},
+                {"Text": "General Inquiry", "Value": "general_inquiry"}
+            ]
+        }
+    }
+    
+    # Send the interactive message
+    response = connect_client.send_message(
+        InstanceId=instance_id,
+        ContactId=contact_id,
+        Content=message,
+        ContentType='text/plain'
+    )
+    
+    # Send the buttons
+    response_buttons = connect_client.send_message(
+        InstanceId=instance_id,
+        ContactId=contact_id,
+        Content=json.dumps(interactive_message),
+        ContentType='application/vnd.amazonaws.connect.message.interactive'
+    )
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Interactive message sent successfully')
+    }
