@@ -6,12 +6,11 @@ def lambda_handler(event, context):
     contact_id = event['ContactId']
     instance_id = 'your_instance_id'
     participant_id = event['ParticipantId']
-    message = "How can I assist you today? Please choose an option:"
-    
+
     # Initialize the ConnectParticipant client
     connect_client = boto3.client('connectparticipant')
     
-    # Define the interactive message
+    # Define the initial interactive message
     interactive_message = {
         "ContentType": "application/vnd.amazonaws.connect.message.interactive",
         "Content": {
@@ -25,23 +24,38 @@ def lambda_handler(event, context):
         }
     }
     
-    # Send the interactive message
-    response = connect_client.send_message(
-        InstanceId=instance_id,
-        ContactId=contact_id,
-        Content=message,
-        ContentType='text/plain'
-    )
-    
-    # Send the buttons
+    # Send the initial interactive message with buttons
     response_buttons = connect_client.send_message(
         InstanceId=instance_id,
         ContactId=contact_id,
         Content=json.dumps(interactive_message),
         ContentType='application/vnd.amazonaws.connect.message.interactive'
     )
+    
+    # Assuming the user's choice comes back in the event data
+    user_input = event.get('UserInput')  # This would be something you handle in your Lex intent fulfillment
+
+    # Depending on the user's choice, you may now route to Lex
+    lex_client = boto3.client('lex-runtime')
+    lex_response = lex_client.post_text(
+        botName='YourLexBotName',
+        botAlias='YourLexBotAlias',
+        userId=contact_id,
+        inputText=user_input
+    )
+    
+    # Process Lex response (you might send another message based on the intent)
+    final_message = f"You selected {lex_response['intentName']}. How can we assist you further?"
+
+    # Send the Lex response back to the chat
+    response = connect_client.send_message(
+        InstanceId=instance_id,
+        ContactId=contact_id,
+        Content=final_message,
+        ContentType='text/plain'
+    )
 
     return {
         'statusCode': 200,
-        'body': json.dumps('Interactive message sent successfully')
+        'body': json.dumps('Message sent successfully')
     }
