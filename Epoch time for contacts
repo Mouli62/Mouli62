@@ -1,0 +1,8 @@
+import time
+from datetime import datetime
+
+# Lambda function to get the current UTC time, convert it to epoch, and round it
+epoch_time = lambda: round(time.mktime(datetime.utcnow().timetuple()))
+
+# Call the lambda function
+print(epoch_time())
