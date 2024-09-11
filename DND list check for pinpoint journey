@@ -1,0 +1,35 @@
+import boto3
+import csv
+from io import StringIO
+
+# Initialize the S3 client
+s3 = boto3.client('s3')
+
+def lambda_handler(event, context):
+    # Extract the phone number and other parameters from the event
+    phone_number = event.get('phone_number')
+    bucket_name = 'your-s3-bucket-name'
+    file_key = 'path/to/your/file.csv'  # S3 file key (location of the CSV file in S3)
+
+    # Fetch the CSV file from S3
+    response = s3.get_object(Bucket=bucket_name, Key=file_key)
+    csv_content = response['Body'].read().decode('utf-8')
+
+    # Read the CSV content
+    csv_reader = csv.reader(StringIO(csv_content))
+
+    # Check if the phone number exists in the CSV (Do Not Call list)
+    for row in csv_reader:
+        if phone_number in row:
+            return {
+                'statusCode': 200,
+                'dialable': False,
+                'message': f'Phone number {phone_number} is on the Do Not Call list.'
+            }
+
+    # If the phone number is not found in the CSV
+    return {
+        'statusCode': 200,
+        'dialable': True,
+        'message': f'Phone number {phone_number} is dialable.'
+    }
