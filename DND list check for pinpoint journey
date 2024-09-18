@@ -6,8 +6,12 @@ from io import StringIO
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
-    # Extract the phone number and other parameters from the event
+    # Print the incoming event for debugging
+    print("Received event: ", event)
+
+    # Extract phone number and endpoint ID from the event
     phone_number = event.get('phone_number')
+    endpoint_id = event.get('endpoint_id')  # Assuming endpoint ID is passed in the event
     bucket_name = 'your-s3-bucket-name'
     file_key = 'path/to/your/file.csv'  # S3 file key (location of the CSV file in S3)
 
@@ -18,18 +22,26 @@ def lambda_handler(event, context):
     # Read the CSV content
     csv_reader = csv.reader(StringIO(csv_content))
 
+    # Default result
+    is_dialable = True
+
     # Check if the phone number exists in the CSV (Do Not Call list)
     for row in csv_reader:
         if phone_number in row:
-            return {
-                'statusCode': 200,
-                'dialable': False,
-                'message': f'Phone number {phone_number} is on the Do Not Call list.'
-            }
+            is_dialable = False
+            break
 
-    # If the phone number is not found in the CSV
+    # Prepare response in Pinpoint format
+    pinpoint_response = {
+        endpoint_id: {
+            'EventAttributes': {
+                'Dialable': 'true' if is_dialable else 'false'
+            }
+        }
+    }
+
+    # Return the response for Pinpoint
     return {
         'statusCode': 200,
-        'dialable': True,
-        'message': f'Phone number {phone_number} is dialable.'
+        'body': pinpoint_response
     }
