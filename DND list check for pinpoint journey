@@ -9,8 +9,17 @@ def lambda_handler(event, context):
     # Print the incoming event for debugging
     print("Received event: ", event)
 
-    # Extract endpoint ID from the event
-    endpoint_id = event.get('endpoint_id')  # Assuming endpoint ID is passed in the event
+    # Extract the 'Endpoints' object from the event
+    endpoints = event.get('Endpoints', {})
+
+    if not endpoints:
+        print("No endpoints found in the event.")
+        return {
+            'statusCode': 400,
+            'body': "Error: No endpoints found in the event."
+        }
+
+    # S3 bucket details
     bucket_name = 'your-s3-bucket-name'
     file_key = 'path/to/your/file.csv'  # S3 file key (location of the CSV file in S3)
 
@@ -34,36 +43,33 @@ def lambda_handler(event, context):
             'body': f"Error: {str(e)}"
         }
 
-    # Assuming event contains a list of phone numbers to verify
-    phone_numbers = event.get('address', [])
-
-    # Ensure phone numbers were passed in the event
-    if not phone_numbers:
-        print("No phone numbers provided in the event.")
-        return {
-            'statusCode': 400,
-            'body': "Error: No phone numbers provided."
-        }
-
-    print(f"Phone numbers to verify: {phone_numbers}")
-
     # Initialize the response dictionary for Pinpoint
     pinpoint_response = {}
 
-    # Loop through the phone numbers and verify if they are dialable
-    for phone_number in phone_numbers:
+    # Loop through each endpoint and process the phone numbers
+    for endpoint_id, endpoint_data in endpoints.items():
+        # Extract the phone number from the 'Address' field
+        phone_number = endpoint_data.get('Address')
+        
+        # Ensure the phone number exists
+        if not phone_number:
+            print(f"No phone number found for endpoint {endpoint_id}.")
+            continue
+        
         # Check if the phone number exists in the Do Not Call list
         is_dialable = phone_number not in do_not_call_numbers
 
-        # Update the response for each phone number
-        pinpoint_response[phone_number] = {
+        # Prepare the response for this endpoint
+        pinpoint_response[endpoint_id] = {
             'EventAttributes': {
                 'Dialable': 'true' if is_dialable else 'false'
             }
         }
-        print(f"Processed {phone_number}: Dialable={is_dialable}")
 
-    # Print the response that the Lambda function is sending back
+        # Print the processed phone number and its dialable status
+        print(f"Processed phone number {phone_number} for endpoint {endpoint_id}: Dialable={is_dialable}")
+
+    # Print the full response that the Lambda function is sending back
     print("Sending response: ", pinpoint_response)
 
     # Return the response for Pinpoint
