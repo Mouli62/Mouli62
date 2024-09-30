@@ -9,8 +9,7 @@ def lambda_handler(event, context):
     # Print the incoming event for debugging
     print("Received event: ", event)
 
-    # Extract phone number and endpoint ID from the event
-    phone_number = event.get('phone_number')
+    # Extract endpoint ID from the event
     endpoint_id = event.get('endpoint_id')  # Assuming endpoint ID is passed in the event
     bucket_name = 'your-s3-bucket-name'
     file_key = 'path/to/your/file.csv'  # S3 file key (location of the CSV file in S3)
@@ -21,24 +20,27 @@ def lambda_handler(event, context):
 
     # Read the CSV content
     csv_reader = csv.reader(StringIO(csv_content))
+    
+    # Create a set of phone numbers in the Do Not Call list for faster lookup
+    do_not_call_numbers = set(row[0] for row in csv_reader)
 
-    # Default result
-    is_dialable = True
+    # Assuming event contains a list of phone numbers to verify
+    phone_numbers = event.get('phone_numbers', [])
+    
+    # Initialize the response dictionary for Pinpoint
+    pinpoint_response = {}
 
-    # Check if the phone number exists in the CSV (Do Not Call list)
-    for row in csv_reader:
-        if phone_number in row:
-            is_dialable = False
-            break
-
-    # Prepare response in Pinpoint format
-    pinpoint_response = {
-        endpoint_id: {
+    # Loop through the phone numbers and verify if they are dialable
+    for phone_number in phone_numbers:
+        # Check if the phone number exists in the Do Not Call list
+        is_dialable = phone_number not in do_not_call_numbers
+        
+        # Update the response for each phone number
+        pinpoint_response[phone_number] = {
             'EventAttributes': {
                 'Dialable': 'true' if is_dialable else 'false'
             }
         }
-    }
 
     # Return the response for Pinpoint
     return {
