@@ -1,0 +1,37 @@
+const mockDB = require('./mockDB');
+
+const getResult = (phNo) => {
+  const dt = new Date();
+  const resp = mockDB[phNo] || {}; // Default to an empty object if the phone number is not found
+  resp.timestamp = `${dt.getFullYear().toString().padStart(4, '0')}/${(dt.getMonth() + 1).toString().padStart(2, '0')}/${dt.getDate().toString().padStart(2, '0')} ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}:${dt.getSeconds().toString().padStart(2, '0')}`;
+  return resp;
+};
+
+exports.handler = async (event) => {
+  try {
+    // Default phone number
+    let phNo = "+11234567890";
+
+    // Check if a valid phone number is provided in the event
+    if (event?.Details?.ContactData?.CustomerEndpoint?.Address && mockDB[event.Details.ContactData.CustomerEndpoint.Address]) {
+      phNo = event.Details.ContactData.CustomerEndpoint.Address;
+    }
+
+    // Get the result using the phone number
+    const response = getResult(phNo);
+
+    // Return the response
+    return {
+      statusCode: 200,
+      body: JSON.stringify(response),
+    };
+  } catch (error) {
+    console.error("Error processing the request:", error);
+
+    // Return an error response
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Internal Server Error" }),
+    };
+  }
+};
